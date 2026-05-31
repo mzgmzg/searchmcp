@@ -3,6 +3,7 @@ import re
 import logging
 import httpx
 import anyio
+from starlette.responses import JSONResponse
 from mcp.server.fastmcp import FastMCP
 from searchmcp.registry import get_backends
 from searchmcp.base import SearchBackend
@@ -137,8 +138,6 @@ class _AuthMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # 401 响应
-        from starlette.responses import JSONResponse
         response = JSONResponse(
             {"error": "unauthorized", "message": "无效或缺失的 API Key"},
             status_code=401,
@@ -147,7 +146,9 @@ class _AuthMiddleware:
 
 
 def _run_http(transport: str):
-    """以 HTTP 方式运行，可选 API Key 鉴权"""
+    """以 HTTP 方式运行，带信号处理和优雅退出"""
+    import uvicorn
+
     host = os.environ.get("FASTMCP_HOST", "127.0.0.1")
     port = int(os.environ.get("FASTMCP_PORT", "8000"))
 
@@ -162,15 +163,26 @@ def _run_http(transport: str):
     else:
         logger.warning("未设置 SEARCHMCP_API_KEY，服务无鉴权保护")
 
-    import uvicorn
     config = uvicorn.Config(
         app,
         host=host,
         port=port,
         log_level=mcp.settings.log_level.lower(),
+        timeout_graceful_shutdown=5,
     )
     server = uvicorn.Server(config)
-    anyio.run(server.serve)
+
+    logger.info(
+        "使用 %s 传输启动 http://%s:%d，SSE 端点: http://%s:%d/sse",
+        transport, host, port, host, port,
+    )
+
+    try:
+        anyio.run(server.serve)
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    finally:
+        logger.info("服务已停止")
 
 
 def main():
