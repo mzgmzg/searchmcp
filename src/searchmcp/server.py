@@ -1,10 +1,11 @@
-import os
+import argparse
 import re
 import logging
 import httpx
 import anyio
 from starlette.responses import JSONResponse
 from mcp.server.fastmcp import FastMCP
+from searchmcp.config import Config, load_config
 from searchmcp.registry import get_backends
 from searchmcp.base import SearchBackend
 
@@ -15,8 +16,6 @@ mcp = FastMCP("searchmcp")
 _FETCH_TIMEOUT = 30.0
 _FETCH_MAX_BYTES = 1024 * 1024  # 1MB
 
-# API Key 鉴权
-_API_KEY = os.environ.get("SEARCHMCP_API_KEY", "")
 _api_key_required_paths = ("/sse", "/messages")
 
 
@@ -55,7 +54,7 @@ def _make_handler(backend: SearchBackend):
 _BACKENDS: list[SearchBackend] = []
 
 
-def _make_fetch_handler():
+def _make_fetch_handler(proxy: str = ""):
     async def fetch(url: str) -> str:
         """抓取指定 URL 的网页内容，返回纯文本"""
         try:
@@ -63,6 +62,7 @@ def _make_fetch_handler():
                 timeout=_FETCH_TIMEOUT,
                 headers={"User-Agent": "SearchMCP/0.1"},
                 follow_redirects=True,
+                proxy=proxy or None,
             ) as client:
                 resp = await client.get(url)
                 resp.raise_for_status()
@@ -88,9 +88,8 @@ def _make_fetch_handler():
     return fetch
 
 
-def init():
-    for backend_cls in get_backends():
-        backend = backend_cls()
+def init(cfg: Config):
+    for backend in get_backends(cfg):
         handler = _make_handler(backend)
         mcp.tool(
             name=f"search_{backend.name}",
@@ -99,7 +98,7 @@ def init():
         _BACKENDS.append(backend)
         logger.info("Registered tool: search_%s", backend.name)
 
-    fetch_handler = _make_fetch_handler()
+    fetch_handler = _make_fetch_handler(proxy=cfg.proxy)
     mcp.tool(
         name="fetch",
         description="抓取指定 URL 的网页内容，返回纯文本",
@@ -116,8 +115,9 @@ def get_active_backends() -> str:
 class _AuthMiddleware:
     """简易 API Key 鉴权中间件，检查 Authorization: Bearer <key> 头"""
 
-    def __init__(self, app):
+    def __init__(self, app, api_key: str):
         self.app = app
+        self.api_key = api_key
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -132,7 +132,7 @@ class _AuthMiddleware:
             return
 
         auth_header = dict(scope.get("headers", [])).get(b"authorization", b"").decode()
-        expected = f"Bearer {_API_KEY}"
+        expected = f"Bearer {self.api_key}"
 
         if auth_header == expected:
             await self.app(scope, receive, send)
@@ -145,28 +145,25 @@ class _AuthMiddleware:
         await response(scope, receive, send)
 
 
-def _run_http(transport: str):
+def _run_http(cfg: Config):
     """以 HTTP 方式运行，带信号处理和优雅退出"""
     import uvicorn
 
-    host = os.environ.get("FASTMCP_HOST", "127.0.0.1")
-    port = int(os.environ.get("FASTMCP_PORT", "8000"))
-
-    if transport == "sse":
+    if cfg.transport == "sse":
         app = mcp.sse_app()
     else:
         app = mcp.streamable_http_app()
 
-    if _API_KEY:
-        app.add_middleware(_AuthMiddleware)
+    if cfg.api_key:
+        app.add_middleware(_AuthMiddleware, api_key=cfg.api_key)
         logger.info("API Key 鉴权已启用")
     else:
         logger.warning("未设置 SEARCHMCP_API_KEY，服务无鉴权保护")
 
     config = uvicorn.Config(
         app,
-        host=host,
-        port=port,
+        host=cfg.host,
+        port=cfg.port,
         log_level=mcp.settings.log_level.lower(),
         timeout_graceful_shutdown=5,
     )
@@ -174,7 +171,7 @@ def _run_http(transport: str):
 
     logger.info(
         "使用 %s 传输启动 http://%s:%d，SSE 端点: http://%s:%d/sse",
-        transport, host, port, host, port,
+        cfg.transport, cfg.host, cfg.port, cfg.host, cfg.port,
     )
 
     try:
@@ -190,15 +187,20 @@ def main():
         level=logging.INFO,
         format="%(levelname)s:%(name)s:%(message)s",
     )
-    init()
 
-    transport = os.environ.get("SEARCHMCP_TRANSPORT", "stdio")
-    if transport not in ("stdio", "sse", "streamable-http"):
-        logger.error("不支持的传输方式: %s，回退到 stdio", transport)
-        transport = "stdio"
+    parser = argparse.ArgumentParser(description="SearchMCP - 多后端在线搜索 MCP Server")
+    parser.add_argument(
+        "-f", "--config",
+        default=None,
+        help="配置文件路径（TOML 格式），环境变量优先级高于配置文件",
+    )
+    args = parser.parse_args()
 
-    if transport == "stdio":
+    cfg = load_config(args.config)
+    init(cfg)
+
+    if cfg.transport == "stdio":
         logger.info("使用 stdio 传输启动")
         mcp.run(transport="stdio")
     else:
-        _run_http(transport)
+        _run_http(cfg)

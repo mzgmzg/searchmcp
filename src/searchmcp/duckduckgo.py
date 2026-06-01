@@ -6,11 +6,14 @@ class DuckDuckGoBackend(SearchBackend):
     name = "duckduckgo"
     description = "Search the web using DuckDuckGo. Free, no API key required."
 
+    def __init__(self, proxy: str = ""):
+        self.proxy = proxy
+
     async def search(self, query: str, max_results: int = 10) -> list[SearchResult]:
         from ddgs import DDGS
 
         raw = await asyncio.to_thread(
-            lambda: DDGS().text(query, max_results=max_results)
+            lambda: DDGS(proxy=self.proxy or None).text(query, max_results=max_results)
         )
 
         results = []

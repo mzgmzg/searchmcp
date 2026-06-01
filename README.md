@@ -5,71 +5,110 @@
 ## 快速开始
 
 ```bash
-# 安装依赖
-make install
-
-# 启动（stdio 模式，Claude Code 集成用）
-make run
-
-# 启动 HTTP 模式
-make run-http
+make install   # 安装依赖
+make run       # 启动（stdio 模式）
 ```
 
 ## 功能
 
 ### 搜索工具
 
-| Tool | 后端 | 需要 API Key |
-|------|------|--------------|
-| `search_duckduckgo` | DuckDuckGo | 否，免费 |
-| `search_brave` | Brave Search | `BRAVE_API_KEY` |
-| `search_tavily` | Tavily Search | `TAVILY_API_KEY` |
-| `search_bing` | Bing Web Search | `BING_API_KEY` |
-
-- DuckDuckGo 默认启用，无需任何配置
-- 其他后端仅在设置了对应的环境变量时自动激活
-- 每个后端注册为独立的 MCP tool，AI 可以按需选择
+| Tool | 后端 | 激活方式 |
+|------|------|----------|
+| `search_duckduckgo` | DuckDuckGo | 默认启用，免费 |
+| `search_brave` | Brave Search | 配置 `brave_api_key` |
+| `search_tavily` | Tavily Search | 配置 `tavily_api_key` |
+| `search_bing` | Bing Web Search | 配置 `bing_api_key` |
 
 ### 网页抓取
 
 | Tool | 说明 |
 |------|------|
-| `fetch` | 抓取指定 URL，自动剥离 HTML 返回纯文本，支持 1MB 上限和重定向 |
+| `fetch` | 抓取指定 URL，自动剥离 HTML 返回纯文本 |
 
-### 传输方式
+## 配置
+
+配置优先级：**环境变量 > 配置文件 > 默认值**。
+
+### 配置文件
+
+复制 `searchmcp.example.toml` 为 `searchmcp.toml` 并按需修改：
+
+```toml
+[server]
+transport = "stdio"          # stdio / sse / streamable-http
+host = "127.0.0.1"
+port = 8000
+api_key = ""                 # HTTP 鉴权用，不设置则无鉴权
+
+[search]
+proxy = ""                   # HTTP 代理，如 http://127.0.0.1:7890
+brave_api_key = ""
+tavily_api_key = ""
+bing_api_key = ""
+```
+
+指定配置文件：
+
+```bash
+# -f 参数
+uv run python -m searchmcp -f searchmcp.toml
+
+# 或通过环境变量
+SEARCHMCP_CONFIG=/path/to/config.toml uv run python -m searchmcp
+```
+
+### 环境变量
+
+所有配置项都有对应的环境变量，可覆盖配置文件中的值：
+
+| 环境变量 | 配置文件键 | 默认值 |
+|---------|-----------|--------|
+| `SEARCHMCP_TRANSPORT` | `server.transport` | `stdio` |
+| `FASTMCP_HOST` | `server.host` | `127.0.0.1` |
+| `FASTMCP_PORT` | `server.port` | `8000` |
+| `SEARCHMCP_API_KEY` | `server.api_key` | 空 |
+| `SEARCHMCP_PROXY` | `search.proxy` | 空 |
+| `SEARCHMCP_CONFIG` | — | 空 |
+| `BRAVE_API_KEY` | `search.brave_api_key` | 空 |
+| `TAVILY_API_KEY` | `search.tavily_api_key` | 空 |
+| `BING_API_KEY` | `search.bing_api_key` | 空 |
+
+### 命令行参数
+
+```
+python -m searchmcp -f searchmcp.toml
+```
+
+| 参数 | 说明 |
+|------|------|
+| `-f`, `--config` | 配置文件路径 |
+
+## 传输方式
 
 | 模式 | 命令 | 适用场景 |
 |------|------|----------|
 | stdio | `make run` | Claude Code / Cursor 本地集成 |
 | HTTP/SSE | `make run-http` | 远程客户端、多端共享 |
 
-HTTP 模式默认 `http://127.0.0.1:8000/sse`，可自定义地址和端口：
-
-```bash
-FASTMCP_HOST=0.0.0.0 FASTMCP_PORT=9000 make run-http
-```
-
-### API Key 鉴权
-
-HTTP 模式下可启用鉴权，设置环境变量即可：
+HTTP 模式默认监听 `http://127.0.0.1:8000/sse`。启用鉴权：
 
 ```bash
 SEARCHMCP_API_KEY=my-secret make run-http
 ```
 
-客户端请求时需携带 `Authorization: Bearer my-secret` 头。不设置该变量则无鉴权。
+客户端需携带 `Authorization: Bearer my-secret` 头，不设置则无鉴权。
 
-## 环境变量
+## 代理
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `SEARCHMCP_TRANSPORT` | 传输方式：`stdio` / `sse` / `streamable-http` | `stdio` |
-| `SEARCHMCP_API_KEY` | HTTP 模式的 API Key，不设则无鉴权 | 空 |
-| `FASTMCP_HOST` | HTTP 监听地址 | `127.0.0.1` |
-| `FASTMCP_PORT` | HTTP 监听端口 | `8000` |
-| `BRAVE_API_KEY` | 激活 Brave Search 后端 | 空 |
-| `TAVILY_API_KEY` | 激活 Tavily Search 后端 | 空 |
-| `BING_API_KEY` | 激活 Bing Search 后端 | 空 |
+设置 HTTP 代理后，所有搜索请求和 fetch 请求均通过代理发出：
+
+```bash
+# 环境变量
+SEARCHMCP_PROXY=http://192.168.100.210:7893 make run
+
+# 或在配置文件中设置 search.proxy
+```
 
 ## Claude Code 集成
 
@@ -82,14 +121,15 @@ SEARCHMCP_API_KEY=my-secret make run-http
       "command": "uv",
       "args": [
         "--directory", "/Users/mazhiguo/workspace-cli/searchmcp",
-        "run", "searchmcp"
+        "run", "searchmcp",
+        "-f", "/Users/mazhiguo/workspace-cli/searchmcp/searchmcp.toml"
       ]
     }
   }
 }
 ```
 
-启用商业搜索后端：
+或纯环境变量方式：
 
 ```json
 {
@@ -110,15 +150,17 @@ SEARCHMCP_API_KEY=my-secret make run-http
 ```
 searchmcp/
 ├── pyproject.toml
+├── searchmcp.example.toml    # 配置文件示例
 ├── Makefile
 ├── src/searchmcp/
-│   ├── server.py         # FastMCP 应用，工具注册，入口 main()
-│   ├── base.py           # SearchResult 数据类 + SearchBackend 抽象基类
-│   ├── registry.py       # 根据环境变量激活后端
-│   ├── duckduckgo.py     # DuckDuckGoBackend
-│   ├── brave.py          # BraveBackend
-│   ├── tavily.py         # TavilyBackend
-│   └── bing.py           # BingBackend
+│   ├── server.py             # FastMCP 应用，工具注册，入口 main()
+│   ├── config.py             # 统一配置加载（TOML + 环境变量）
+│   ├── base.py               # SearchResult 数据类 + SearchBackend 抽象基类
+│   ├── registry.py           # 根据配置激活后端
+│   ├── duckduckgo.py         # DuckDuckGoBackend
+│   ├── brave.py              # BraveBackend
+│   ├── tavily.py             # TavilyBackend
+│   └── bing.py               # BingBackend
 ```
 
 ## 添加新后端
@@ -132,6 +174,10 @@ class YourBackend(SearchBackend):
     name = "yourbackend"
     description = "Search the web using YourBackend."
 
+    def __init__(self, api_key: str = "", proxy: str = ""):
+        self.api_key = api_key
+        self.proxy = proxy
+
     async def search(self, query: str, max_results: int = 10) -> list[SearchResult]:
         ...
 ```
@@ -139,6 +185,8 @@ class YourBackend(SearchBackend):
 2. 在 `src/searchmcp/registry.py` 中注册：
 
 ```python
-if os.environ.get("YOUR_API_KEY"):
-    backends.append(YourBackend)
+if cfg.your_api_key:
+    backends.append(YourBackend(api_key=cfg.your_api_key, proxy=cfg.proxy))
 ```
+
+3. 在 `src/searchmcp/config.py` 的 `Config` 和 `_apply_env` 中添加对应的配置项。

@@ -1,18 +1,19 @@
-import os
+from searchmcp.config import Config
 from searchmcp.duckduckgo import DuckDuckGoBackend
 from searchmcp.brave import BraveBackend
 from searchmcp.tavily import TavilyBackend
 from searchmcp.bing import BingBackend
+from searchmcp.base import SearchBackend
 
 
-def get_backends() -> list[type]:
-    backends = [DuckDuckGoBackend]
+def get_backends(cfg: Config) -> list[SearchBackend]:
+    backends = [DuckDuckGoBackend(proxy=cfg.proxy)]
 
-    if os.environ.get("BRAVE_API_KEY"):
-        backends.append(BraveBackend)
-    if os.environ.get("TAVILY_API_KEY"):
-        backends.append(TavilyBackend)
-    if os.environ.get("BING_API_KEY"):
-        backends.append(BingBackend)
+    if cfg.brave_api_key:
+        backends.append(BraveBackend(api_key=cfg.brave_api_key, proxy=cfg.proxy))
+    if cfg.tavily_api_key:
+        backends.append(TavilyBackend(api_key=cfg.tavily_api_key, proxy=cfg.proxy))
+    if cfg.bing_api_key:
+        backends.append(BingBackend(api_key=cfg.bing_api_key, proxy=cfg.proxy))
 
     return backends
