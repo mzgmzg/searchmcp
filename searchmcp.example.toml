@@ -15,6 +15,8 @@ api_key = ""
 [search]
 # HTTP 代理地址，如 http://127.0.0.1:7890
 proxy = ""
+# SearXNG 自部署元搜索引擎地址，设置即激活
+searxng_base_url = ""
 # 各搜索后端的 API Key，设置即激活
 brave_api_key = ""
 tavily_api_key = ""

@@ -10,6 +10,7 @@ class Config:
     port: int = 8000
     api_key: str = ""
     proxy: str = ""
+    searxng_base_url: str = ""
     brave_api_key: str = ""
     tavily_api_key: str = ""
     bing_api_key: str = ""
@@ -42,7 +43,7 @@ def _load_file(cfg: Config, path: str):
     if "port" in server:
         cfg.port = server["port"]
 
-    for key in ("proxy", "brave_api_key", "tavily_api_key", "bing_api_key"):
+    for key in ("proxy", "searxng_base_url", "brave_api_key", "tavily_api_key", "bing_api_key"):
         if key in search:
             setattr(cfg, key, search[key])
 
@@ -54,6 +55,7 @@ def _apply_env(cfg: Config):
         "FASTMCP_PORT": "port",
         "SEARCHMCP_API_KEY": "api_key",
         "SEARCHMCP_PROXY": "proxy",
+        "SEARXNG_BASE_URL": "searxng_base_url",
         "BRAVE_API_KEY": "brave_api_key",
         "TAVILY_API_KEY": "tavily_api_key",
         "BING_API_KEY": "bing_api_key",

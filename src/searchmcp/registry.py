@@ -3,12 +3,15 @@ from searchmcp.duckduckgo import DuckDuckGoBackend
 from searchmcp.brave import BraveBackend
 from searchmcp.tavily import TavilyBackend
 from searchmcp.bing import BingBackend
+from searchmcp.searxng import SearXNGBackend
 from searchmcp.base import SearchBackend
 
 
 def get_backends(cfg: Config) -> list[SearchBackend]:
     backends = [DuckDuckGoBackend(proxy=cfg.proxy)]
 
+    if cfg.searxng_base_url:
+        backends.append(SearXNGBackend(base_url=cfg.searxng_base_url, proxy=cfg.proxy))
     if cfg.brave_api_key:
         backends.append(BraveBackend(api_key=cfg.brave_api_key, proxy=cfg.proxy))
     if cfg.tavily_api_key:
